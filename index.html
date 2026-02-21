@@ -1,0 +1,252 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SF Property Embeddings Explorer</title>
+    
+    <script src="https://cdn.jsdelivr.net/npm/vega@5"></script>
+    <script src="https://cdn.jsdelivr.net/npm/vega-lite@5"></script>
+    <script src="https://cdn.jsdelivr.net/npm/vega-embed@6"></script>
+    <script src="https://d3js.org/d3.v7.min.js"></script>
+    
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>San Francisco Property Embeddings Explorer</h1>
+            <p class="subtitle">
+                Embedding-based exploration of San Francisco properties (2015–2023)
+            </p>
+            <p class="projection-hint">
+                Use the <strong>Projection</strong> selector to compare global structure (PCA) vs local neighborhoods (t-SNE).
+            </p>
+        </header>
+
+        <div class="controls">
+            <div class="control-group">
+                <label for="sample-size-input">Sample Size:</label>
+                <input
+                    id="sample-size-input"
+                    type="range"
+                    min="1000"
+                    max="50000"
+                    step="1000"
+                    value="5000"
+                />
+                <span id="sample-size-label">5,000</span>
+                <button id="resample-btn">Resample</button>
+            </div>
+
+            <div class="control-group">
+                <label for="projection-select">Projection:</label>
+                <select id="projection-select">
+                    <option value="pca" selected>PCA</option>
+                    <option value="tsne">t-SNE</option>
+                </select>
+            </div>
+
+            <!-- Dropdown with checkboxes for years -->
+            <div class="control-group">
+                <label for="year-filter-toggle">Filter by Year:</label>
+                <div class="custom-multiselect">
+                    <button type="button" id="year-filter-toggle" class="multiselect-toggle">
+                        All Years ▼
+                    </button>
+                    <div id="year-filter-dropdown" class="multiselect-dropdown">
+                        <div class="multiselect-option">
+                            <label>
+                                <input type="checkbox" value="all" checked data-year-option>
+                                <span>All Years</span>
+                            </label>
+                        </div>
+                        <div class="multiselect-divider"></div>
+                        <div class="multiselect-option">
+                            <label>
+                                <input type="checkbox" value="2015" data-year-option>
+                                <span>2015</span>
+                            </label>
+                        </div>
+                        <div class="multiselect-option">
+                            <label>
+                                <input type="checkbox" value="2016" data-year-option>
+                                <span>2016</span>
+                            </label>
+                        </div>
+                        <div class="multiselect-option">
+                            <label>
+                                <input type="checkbox" value="2017" data-year-option>
+                                <span>2017</span>
+                            </label>
+                        </div>
+                        <div class="multiselect-option">
+                            <label>
+                                <input type="checkbox" value="2018" data-year-option>
+                                <span>2018</span>
+                            </label>
+                        </div>
+                        <div class="multiselect-option">
+                            <label>
+                                <input type="checkbox" value="2019" data-year-option>
+                                <span>2019</span>
+                            </label>
+                        </div>
+                        <div class="multiselect-option">
+                            <label>
+                                <input type="checkbox" value="2020" data-year-option>
+                                <span>2020</span>
+                            </label>
+                        </div>
+                        <div class="multiselect-option">
+                            <label>
+                                <input type="checkbox" value="2021" data-year-option>
+                                <span>2021</span>
+                            </label>
+                        </div>
+                        <div class="multiselect-option">
+                            <label>
+                                <input type="checkbox" value="2022" data-year-option>
+                                <span>2022</span>
+                            </label>
+                        </div>
+                        <div class="multiselect-option">
+                            <label>
+                                <input type="checkbox" value="2023" data-year-option>
+                                <span>2023</span>
+                            </label>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="control-group">
+                <label for="color-select">Color By:</label>
+                <select id="color-select">
+                    <option value="total_assessed_value">Property Value</option>
+                    <option value="building_age">Building Age</option>
+                    <option value="neighborhood">Neighborhood</option>
+                    <option value="number_of_bedrooms">Bedrooms</option>
+                </select>
+            </div>
+
+            <div class="control-group">
+                <label for="size-select">Size By:</label>
+                <select id="size-select">
+                    <option value="none">Uniform</option>
+                    <option value="property_area">Property Area</option>
+                    <option value="total_assessed_value">Property Value</option>
+                    <option value="number_of_bedrooms">Bedrooms</option>
+                </select>
+            </div>
+
+            <div class="control-group">
+                <button id="clear-filters-btn">Clear Filters</button>
+            </div>
+
+            <div class="controls-secondary">
+                <div id="active-filters" class="filter-summary">
+                    Filters: none (showing all sampled properties)
+                </div>
+                <div id="selection-stats" class="selection-stats">
+                    Current subset: —
+                </div>
+            </div>
+        </div>
+
+        <!-- Main embedding view with detail panels -->
+        <div class="main-content">
+            <div class="viz-panel main-panel">
+                <h3>Embedding Space</h3>
+                <div id="embedding-view" class="viz-container"></div>
+                <p class="viz-description">
+                    Each point is a property. Similar properties are close in this space based on
+                    value, size, age, and spatial context. Brush over regions to inspect clusters and
+                    outliers. Filters and spatial selections update this view.
+                </p>
+            </div>
+
+            <div class="viz-panel detail-panel">
+                <div class="detail-view">
+                    <h4>Value Distribution</h4>
+                    <div id="value-histogram" class="viz-container-small"></div>
+                    <p class="viz-description">
+                        Brush along the x-axis to select a value range and filter the embedding.
+                        Double-click inside the chart to clear.
+                    </p>
+                </div>
+
+                <div class="detail-view">
+                    <h4>Top Neighborhoods</h4>
+                    <div id="neighborhood-bars" class="viz-container-small"></div>
+                    <p class="viz-description">
+                        Click neighborhoods to focus the embedding. Shift-click for multi-select;
+                        double-click to clear.
+                    </p>
+                </div>
+
+                <div class="detail-view">
+                    <h4>Temporal Trends</h4>
+                    <div id="year-trends" class="viz-container-small"></div>
+                    <p class="viz-description">
+                        Median assessed value by year for the current subset (driven by embedding
+                        brush and filters).
+                    </p>
+                </div>
+            </div>
+        </div>
+
+        <!-- Spatial and attribute views -->
+        <div class="bottom-content">
+            <div class="viz-panel spatial-panel">
+                <div class="spatial-header">
+                    <h3>Spatial Views</h3>
+                    <div class="spatial-controls">
+                        <label for="choropleth-metric">Choropleth:</label>
+                        <select id="choropleth-metric">
+                            <option value="median_value" selected>Median value</option>
+                            <option value="count">Property count</option>
+                        </select>
+                    </div>
+                </div>
+                <div class="spatial-grid">
+                    <div class="spatial-subpanel">
+                        <h4>Point Map</h4>
+                        <div id="map-view" class="viz-container-map"></div>
+                    </div>
+                    <div class="spatial-subpanel">
+                        <h4>ZIP Code Choropleth</h4>
+                        <div id="choropleth-view" class="viz-container-map"></div>
+                    </div>
+                </div>
+                <p class="viz-description">
+                    The point map shows individual properties. The choropleth aggregates the current
+                    subset by ZIP code. Click ZIP regions to filter the embedding to those areas
+                    (double-click to clear).
+                </p>
+            </div>
+
+            <div class="viz-panel parallel-panel">
+                <h3>Property Attributes</h3>
+                <div id="parallel-coords" class="viz-container-medium"></div>
+                <h4 class="subheading">Value–Size Analyzer</h4>
+                <div id="size-value-scatter" class="viz-container-medium"></div>
+                <p class="viz-description">
+                    Parallel coordinates normalize value, area, age, and bedrooms to compare cluster
+                    profiles. The Value–Size Analyzer reuses the Assignment 3 scatter (area vs.
+                    value, log scales, color by value per square foot) for the current subset.
+                </p>
+            </div>
+        </div>
+
+        <footer>
+            <p>
+                CS424 Visualization &amp; Visual Analytics &nbsp;|&nbsp; Assignment 4 &nbsp;|&nbsp;
+                Anand Meena &amp; Shruthi Kodati
+            </p>
+        </footer>
+    </div>
+
+    <script src="script.js"></script>
+</body>
+</html>
